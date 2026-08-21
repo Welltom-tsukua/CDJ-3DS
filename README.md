@@ -1,19 +1,83 @@
-# 3DS One Deck
+# CDJ-3DS
 
-Initial executable UI foundation for the one-deck rekordbox player.
+rekordbox の Device Library を読み込み、Nintendo 3DS/3DS LL を 1 Deck の DJ プレーヤーとして使う Homebrew アプリです。上画面はデッキ情報と全体波形、下画面はランタイム波形とタッチ操作を表示します。
 
-This build implements the two-screen interaction model and state machine only:
+> 非公式のファンメイド・プロトタイプです。Pioneer DJ / rekordbox の公式製品ではありません。
 
-- top 400x240 deck / Browser / LOOP controls
-- bottom 320x240 runtime waveform and touch scrub surface
-- `B` play/pause, `A` cue, `Y` scratch modifier, `X` contextual confirmation,
-  D-pad navigation
-- loop selections of 1/4, 1/2, 1, 2 and 4 beats
+## 対応環境
 
-The next source layer is the streaming audio and rekordbox parser:
+- 改造済み Nintendo 3DS / 3DS LL（Luma3DS + FBI）
+- rekordbox から SD カードへエクスポートした Device Library
+- MP3、AAC / M4A（AAC-LC）の楽曲
+- 3DS の SD カード内にある `PIONEER` フォルダ
 
-- `sdmc:/PIONEER/rekordbox/export.pdb` for Device Library rows
-- `sdmc:/PIONEER/USBANLZ` for beat grids and overview waveform data
-- MP3 and AAC-in-M4A streaming decode to ndsp
+`3ds_one_deck_himem.cia` は、旧3DS/3DS LL でも通常の Homebrew Launcher より多いメモリを使うための CIA 版です。3DSX 版も同梱しています。
 
-Build from a devkitPro MSYS shell with `make`.
+## 使い方
+
+1. rekordbox で楽曲を SD カードへエクスポートします。
+2. SD カードにアプリを配置します。
+
+   ```text
+   SD:/3ds/3ds_one_deck/3ds_one_deck.3dsx
+   SD:/3ds/3ds_one_deck/cache/library.rbd
+   ```
+
+3. より多いメモリで使う場合は FBI から `3ds_one_deck_himem.cia` を **Install CIA** でインストールし、HOME メニューの CDJ-3DS を起動します。
+4. `X` でブラウザを開き、十字キー上下で曲を選択して `A` でロードします。
+
+アプリはエクスポート済みの Device Library からタイトル、作曲者、BPM、キー、アートワーク、波形、ビートグリッド、Memory Cue、Hot Cue を読み込みます。曲を追加・再エクスポートした際は `cache/library.rbd` を更新してください。
+
+## 基本操作
+
+| 操作 | 内容 |
+| --- | --- |
+| `B` | 再生 / 一時停止 |
+| `A`（停止中） | 現在位置を Cue に設定して、押している間だけ再生 |
+| `A`（再生中） | 音を止めて Cue 位置へ戻る |
+| `X` | ブラウザを開く / 閉じる |
+| 十字キー `←` / `→` | 上画面のメニューを切替 |
+| 十字キー `↑` / `↓` | ランタイム波形の拡大率を変更 |
+| `Y` + 十字キー `←` / `→` | Beat Jump（現在の設定拍数で戻る / 進む） |
+| `R` + 十字キー `←` / `→`（停止中） | 前 / 次の Memory Cue へ移動 |
+| スライドパッド左右 | 一時的なピッチベンド（再生中） |
+| 下画面の波形をドラッグ | スクラッチ / 再生位置の移動 |
+| 下画面右上の Tempo Range | `±6` → `±10` → `±16` → `WIDE` を切替 |
+| 下画面のテンポフェーダー | テンポを変更 |
+
+## 下画面メニュー
+
+上画面のメニューを `←` / `→` で選び、下画面をタッチして操作します。
+
+- **HOT CUE** — 8 パッド。空きパッドは現在位置に Hot Cue を登録し、登録済みパッドは呼び出します。`Y` を押しながらタップすると削除します。
+- **MEMORY CUE** — Memory Cue の登録・削除。
+- **BEAT LOOP** — `LOOP IN`、`LOOP OUT`、`4 BEATS`、`8 BEATS`、`EXIT`。ループ中は `4 BEATS` が `×1/2`、`8 BEATS` が `×2` になります。
+- **BEAT JUMP** — 1 / 2 / 4 / 8 拍の前後ジャンプ。
+- **SETTING** — Quantize、Beat Jump 拍数、Auto Cue、A.Hot Cue、Master Tempo などを設定します。
+
+Quantize を有効にすると、Cue と Loop の境界は選択したビート単位へ丸められます。
+
+## 注意点
+
+- 音声は 3DS のヘッドホン端子からステレオで出力されます。ライン入力へ接続する場合は、音量を下げてから接続してください。
+- AAC / M4A は楽曲のエンコード形式によってデコードできないことがあります。再生できない曲は MP3 への変換を推奨します。
+- Hot Cue、Loop、Beat Jump は音声処理を最優先に実装していますが、旧3DS/3DS LL では高ビットレート AAC/M4A・大きなテンポ変更時に処理負荷が高くなることがあります。
+- アプリで変更した Cue 情報は `SD:/3ds/3ds_one_deck/cache/cue-overrides.rbd` に保存されます。rekordbox の元データベースは直接変更しません。
+
+## ビルド
+
+devkitPro / devkitARM が必要です。devkitPro MSYS シェルで実行します。
+
+```sh
+make          # 3DSX を生成
+make cia      # 96 MB モードの CIA を生成
+```
+
+生成物:
+
+- `3ds_one_deck.3dsx`
+- `3ds_one_deck_himem.cia`
+
+## ライセンスと権利表記
+
+Pioneer DJ、rekordbox は各権利者の商標です。本プロジェクトは教育・実験目的の非公式ソフトウェアです。楽曲ファイルおよび rekordbox エクスポートデータはリポジトリに含めません。
