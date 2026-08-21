@@ -1,0 +1,3 @@
+[submodule "third_party/soundtouch"]
+	path = third_party/soundtouch
+	url = https://github.com/rspeyer/soundtouch.git

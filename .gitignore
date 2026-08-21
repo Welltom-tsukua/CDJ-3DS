@@ -1,0 +1,21 @@
+# 3DS build products
+*.o
+*.d
+*.elf
+*.3dsx
+*.smdh
+*.romfs
+*.cia
+
+# Generated runtime/font assets and local logs
+romfs/*.bcfnt
+*.log
+*.out.log
+*.err.log
+build/
+*-preview.png
+
+# Downloaded local-only packaging tools
+tools/makerom/
+tools/3dstool/
+tools/__pycache__/

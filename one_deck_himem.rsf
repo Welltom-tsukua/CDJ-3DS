@@ -1,0 +1,32 @@
+BasicInfo:
+  Title: "3DS One Deck"
+  CompanyCode: "00"
+  ProductCode: "CTR-P-ONEDK"
+  ContentType: Application
+  Logo: Nintendo
+
+TitleInfo:
+  UniqueId: 0xF0D3C
+  Category: Application
+
+Option:
+  UseOnSD: true
+  FreeProductCode: true
+  EnableCrypt: false
+
+AccessControlInfo:
+  CoreVersion: 2
+  DescVersion: 2
+  ReleaseKernelMajor: "02"
+  ReleaseKernelMinor: "50"
+  MemoryType: Application
+  # Old 3DS / 3DS LL: enlarged application FCRAM partition.
+  SystemMode: 96MB
+  # New 3DS uses its enlarged partition when available.
+  SystemModeExt: 124MB
+  FileSystemAccess:
+    - DirectSdmc
+
+SystemControlInfo:
+  # Matches main.c's AAC-safe stack reservation.
+  StackSize: 0x40000
