@@ -28,6 +28,24 @@ rekordbox の Device Library を読み込み、Nintendo 3DS/3DS LL を 1 Deck �
 
 アプリはエクスポート済みの Device Library からタイトル、作曲者、BPM、キー、アートワーク、波形、ビートグリッド、Memory Cue、Hot Cue を読み込みます。曲を追加・再エクスポートした際は `cache/library.rbd` を更新してください。
 
+## AAC / M4A をMP3化するPCツール
+
+`tools/convert_device_library_mp3.py` は、Device Library の元ファイルを変更せずに AAC / M4A / MP4 を 44.1 kHz ステレオ CBR MP3 へ変換します。変換後のMP3と更新済み `library.rbd` はCDJ-3DS専用キャッシュに置かれるため、曲名・アートワーク・グリッド・Cueは元のrekordboxエクスポートをそのまま利用できます。
+
+FFmpegをインストールしたPCで、SDカードを挿して実行します。
+
+```powershell
+py tools\convert_device_library_mp3.py F:\
+```
+
+標準は320 kbpsです。容量を優先する場合は `--bitrate 256k`、FFmpegをPATHへ追加していない場合は `--ffmpeg C:\path\to\ffmpeg.exe` を付けます。
+
+```powershell
+py tools\convert_device_library_mp3.py F:\ --bitrate 256k
+```
+
+出力先は `SD:/3ds/3ds_one_deck/cache/audio/performance/` です。PIONEERフォルダと元のM4A/AACは一切置き換えません。
+
 ## 基本操作
 
 | 操作 | 内容 |

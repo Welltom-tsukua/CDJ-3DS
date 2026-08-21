@@ -1,101 +1,70 @@
-"""Create a 3DS playback replacement map for rekordbox AAC/M4A exports.
+"""Make a 3DS-optimised MP3 performance library from a rekordbox SD export.
 
-This is intentionally separate from device-library import.  It never changes
-PIONEER/export.pdb or the source AAC files.  The 3DS importer can read the
-map and select the generated MP3 only for audio playback, while all metadata,
-beat-grid and cue information continues to come from the original export.
+The original Device Library is never modified.  AAC/M4A/MP4 files are converted
+to deterministic 44.1 kHz stereo CBR MP3 files under the CDJ-3DS cache, then a
+fresh ``library.rbd`` is generated which points the player at those copies while
+retaining rekordbox metadata, artwork, beat grids and cue positions.
 """
 from __future__ import annotations
 
 import argparse
-import hashlib
-import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 
 
-MAP_HEADER = "RB3D_AUDIO_MAP\t1\n"
-
-
 def find_ffmpeg(explicit: Path | None) -> Path:
-    if explicit:
+    if explicit is not None:
         if explicit.is_file():
             return explicit
-        raise FileNotFoundError(f"ffmpeg not found: {explicit}")
+        raise FileNotFoundError(f"ffmpeg.exe was not found: {explicit}")
     found = shutil.which("ffmpeg")
     if found:
         return Path(found)
-    local = Path(os.environ.get("LOCALAPPDATA", ""))
-    packages = local / "Microsoft" / "WinGet" / "Packages"
-    matches = sorted(packages.glob("Gyan.FFmpeg*/*/bin/ffmpeg.exe"))
-    if matches:
-        return matches[-1]
-    raise FileNotFoundError("ffmpeg.exe was not found; install FFmpeg or pass --ffmpeg")
-
-
-def replacement_name(relative: str) -> str:
-    # Hashing preserves stable identity even when exported titles contain
-    # Japanese or reserved FAT filename characters.
-    return hashlib.sha1(relative.encode("utf-8")).hexdigest()[:20] + ".mp3"
-
-
-def convert(source: Path, destination: Path, ffmpeg: Path, bitrate: str) -> None:
-    try:
-        current = destination.is_file() and destination.stat().st_size > 0
-        current = current and destination.stat().st_mtime_ns >= source.stat().st_mtime_ns
-    except OSError:
-        current = False
-    if current:
-        return
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = destination.with_name(f".{destination.stem}.{os.getpid()}.tmp.mp3")
-    subprocess.run([
-        str(ffmpeg), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
-        "-i", str(source), "-map", "0:a:0", "-vn", "-sn", "-dn",
-        "-c:a", "libmp3lame", "-b:a", bitrate, "-ar", "44100", "-ac", "2",
-        str(temporary),
-    ], check=True)
-    temporary.replace(destination)
+    raise FileNotFoundError(
+        "ffmpeg.exe was not found. Install FFmpeg or pass --ffmpeg C:\\path\\to\\ffmpeg.exe")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Generate MP3 performance replacements without changing rekordbox exports")
-    parser.add_argument("sd_root", type=Path, help="root of the rekordbox device-export SD card")
+        description="Convert rekordbox AAC/M4A files to CDJ-3DS MP3 performance copies")
+    parser.add_argument("sd_root", type=Path,
+                        help="root of the rekordbox Device Library SD card, e.g. F:\\")
     parser.add_argument("--ffmpeg", type=Path, help="path to ffmpeg.exe")
     parser.add_argument("--bitrate", default="320k", choices=("192k", "256k", "320k"),
                         help="MP3 CBR bitrate (default: 320k)")
+    parser.add_argument("--skip-artwork", action="store_true",
+                        help="reuse existing CDJ-3DS RGB565 artwork cache")
     args = parser.parse_args()
+
     root = args.sd_root.resolve()
-    contents = root / "Contents"
-    if not contents.is_dir():
-        parser.error(f"Contents directory not found: {contents}")
-    ffmpeg = find_ffmpeg(args.ffmpeg)
-    replacement_root = root / "3ds" / "3ds_one_deck" / "cache" / "performance_audio"
-    entries: list[tuple[str, str]] = []
-    for source in sorted(contents.rglob("*")):
-        if not source.is_file() or source.suffix.lower() not in {".m4a", ".aac", ".mp4"}:
-            continue
-        original = source.relative_to(root).as_posix()
-        replacement = replacement_root / replacement_name(original)
-        try:
-            convert(source, replacement, ffmpeg, args.bitrate)
-        except (OSError, subprocess.CalledProcessError) as error:
-            print(f"ERROR: {source.name}: {error}", file=sys.stderr)
-            return 1
-        entries.append((original, replacement.relative_to(root).as_posix()))
-        print(f"MP3 {len(entries):03d}: {source.name}")
-    map_path = root / "3ds" / "3ds_one_deck" / "cache" / "performance-audio-map.tsv"
-    map_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_map = map_path.with_suffix(".tmp")
-    with temporary_map.open("w", encoding="utf-8", newline="\n") as stream:
-        stream.write(MAP_HEADER)
-        for original, replacement in entries:
-            stream.write(f"{original}\t{replacement}\n")
-    temporary_map.replace(map_path)
-    print(f"Wrote {len(entries)} replacements to {map_path}")
+    if not (root / "PIONEER" / "rekordbox" / "export.pdb").is_file():
+        parser.error(f"rekordbox export.pdb was not found under: {root}")
+    if not (root / "Contents").is_dir():
+        parser.error(f"Contents directory was not found under: {root}")
+
+    try:
+        ffmpeg = find_ffmpeg(args.ffmpeg)
+    except FileNotFoundError as error:
+        parser.error(str(error))
+
+    cache_builder = Path(__file__).with_name("build_rekordbox_cache.py")
+    command = [
+        sys.executable, str(cache_builder), str(root),
+        "--transcode-aac", "--ffmpeg", str(ffmpeg), "--mp3-bitrate", args.bitrate,
+    ]
+    if args.skip_artwork:
+        command.append("--skip-artwork")
+    try:
+        subprocess.run(command, check=True)
+    except subprocess.CalledProcessError as error:
+        return error.returncode or 1
+
+    performance_root = root / "3ds" / "3ds_one_deck" / "cache" / "audio" / "performance"
+    converted = len(list(performance_root.glob("*.mp3"))) if performance_root.is_dir() else 0
+    print(f"Ready: {converted} MP3 performance copies in {performance_root}")
+    print("CDJ-3DS will use these MP3 files; PIONEER and original audio files are unchanged.")
     return 0
 
 

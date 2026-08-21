@@ -120,7 +120,8 @@ def player_audio_path(root: Path, output_root: Path, identifier: str, source: Pa
     return f"sdmc:/3ds/3ds_one_deck/cache/audio/{destination.name}"
 
 
-def transcode_aac_for_player(source: Path, output_root: Path, identifier: str, ffmpeg: Path) -> Path:
+def transcode_aac_for_player(source: Path, output_root: Path, identifier: str, ffmpeg: Path,
+                             bitrate: str) -> Path:
     """Create a deterministic MP3 performance copy for an AAC/M4A export.
 
     The original device-library file is never touched.  The player copy is
@@ -146,7 +147,7 @@ def transcode_aac_for_player(source: Path, output_root: Path, identifier: str, f
         subprocess.run([
             str(ffmpeg), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
             "-i", str(source), "-map", "0:a:0", "-vn", "-sn", "-dn",
-            "-c:a", "libmp3lame", "-b:a", "320k", "-ar", "44100", "-ac", "2",
+            "-c:a", "libmp3lame", "-b:a", bitrate, "-ar", "44100", "-ac", "2",
             str(temporary),
         ], check=True)
         temporary.replace(destination)
@@ -444,6 +445,8 @@ def main() -> int:
                         help="create 320 kbps MP3 performance copies for every M4A/AAC track")
     parser.add_argument("--ffmpeg", type=Path,
                         help="path to ffmpeg.exe (defaults to ffmpeg on PATH)")
+    parser.add_argument("--mp3-bitrate", default="320k", choices=("192k", "256k", "320k"),
+                        help="CBR bitrate for --transcode-aac performance copies (default: 320k)")
     parser.add_argument("--skip-artwork", action="store_true",
                         help="reuse existing RGB565 covers; do not decode source artwork")
     arguments = parser.parse_args()
@@ -466,7 +469,7 @@ def main() -> int:
     known_paths: set[str] = set()
     audio_by_ascii_key: dict[str, list[Path]] = {}
     for audio_path in (root / "Contents").rglob("*"):
-        if audio_path.is_file() and audio_path.suffix.lower() in {".mp3", ".m4a"}:
+        if audio_path.is_file() and audio_path.suffix.lower() in {".mp3", ".m4a", ".aac", ".mp4"}:
             relative = audio_path.relative_to(root).as_posix()
             audio_by_ascii_key.setdefault(ascii_path_key(relative), []).append(audio_path)
     for track in database["tracks"]:
@@ -491,7 +494,7 @@ def main() -> int:
         # The 3DS player only decodes MP3/AAC.  Device backups can also retain
         # rekordbox sample WAV entries, which must not consume the 128-track
         # player cache budget.
-        if audio_path.suffix.lower() not in {".mp3", ".m4a"}:
+        if audio_path.suffix.lower() not in {".mp3", ".m4a", ".aac", ".mp4"}:
             continue
         known_paths.add(relative_path.replace("\\", "/").casefold())
         composer = lookup(database, "get_artist", track.composer_index, "name")
@@ -523,8 +526,9 @@ def main() -> int:
         display_artist = "" if looks_mojibake(artist) else str(artist)
         font_strings.extend((title, creator, display_artist))
         player_audio = audio_path
-        if arguments.transcode_aac and audio_path.suffix.lower() == ".m4a":
-            player_audio = transcode_aac_for_player(audio_path, output_root, str(track.id), ffmpeg)
+        if arguments.transcode_aac and audio_path.suffix.lower() in {".m4a", ".aac", ".mp4"}:
+            player_audio = transcode_aac_for_player(audio_path, output_root, str(track.id), ffmpeg,
+                                                     arguments.mp3_bitrate)
         seek_offsets, seek_skips, audio_delay_samples, mp3_sample_rate = mp3_seek_index(player_audio)
         if player_audio.suffix.lower() == ".m4a":
             audio_delay_samples = m4a_gapless_delay(player_audio)
@@ -554,7 +558,7 @@ def main() -> int:
     for audio_path in sorted((root / "Contents").rglob("*")):
         if len(rows) >= MAX_TRACKS:
             break
-        if not audio_path.is_file() or audio_path.suffix.lower() not in {".mp3", ".m4a"}:
+        if not audio_path.is_file() or audio_path.suffix.lower() not in {".mp3", ".m4a", ".aac", ".mp4"}:
             continue
         relative_path = audio_path.relative_to(root).as_posix()
         if relative_path.casefold() in known_paths:
@@ -563,8 +567,9 @@ def main() -> int:
         font_strings.extend((audio_path.stem, artist))
         fallback_id = f"fallback_{len(rows):02d}"
         player_audio = audio_path
-        if arguments.transcode_aac and audio_path.suffix.lower() == ".m4a":
-            player_audio = transcode_aac_for_player(audio_path, output_root, fallback_id, ffmpeg)
+        if arguments.transcode_aac and audio_path.suffix.lower() in {".m4a", ".aac", ".mp4"}:
+            player_audio = transcode_aac_for_player(audio_path, output_root, fallback_id, ffmpeg,
+                                                     arguments.mp3_bitrate)
         rows.append(RECORD.pack(
             fixed(player_audio_path(root, output_root, fallback_id, player_audio), 512), fixed(audio_path.stem, 160), fixed(artist, 160),
             fixed(artist, 120), fixed("", 16), fixed("", 64), 0, 0, 0, 0, 0, 0, b"\0" * 400, *([0] * 400),
